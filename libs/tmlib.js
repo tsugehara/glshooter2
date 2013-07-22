@@ -221,27 +221,56 @@ if (typeof module !== 'undefined' && module.exports) {
         return current;
     };
 
+    tm.updater = [];
+    tm.loopTime = 1000 / 60;
+    tm.exit = false;
+
+    tm.mainLoop = function() {
+        // 開始時間
+        var start = (new Date()).getTime();
+        if (tm.exit)
+            return;
+
+        // 実行
+        var updater = tm.updater;
+        var len = updater.length;
+        var dels = [];
+        for (var i=0; i<len; i++) {
+            if (updater[i].t <= tm.loopTime) {
+                if (updater[i].fn()) {
+                    dels.push(updater[i]);
+                } else {
+                    updater[i].t = updater[i].delay;
+                }
+            } else {
+                updater[i].t -= tm.loopTime;
+            }
+        }
+
+        var d;
+        while (d=dels.pop())
+            tm.updater.splice(tm.updater.indexOf(d, 1));
+
+        // 経過時間
+        var progress = (new Date()).getTime() - start;
+        // 次回までの待ち時間を計算
+        var newDelay = tm.loopTime-progress;
+        newDelay = (newDelay > 0) ? newDelay : 0;
+
+        // 次回呼び出し登録
+        setTimeout(arguments.callee, newDelay);
+    };
+    setTimeout(tm.mainLoop, tm.loopTime);
+
     /**
      * ループ
      */
     tm.setLoop = function(fn, delay) {
-        var temp = function() {
-            // 開始時間
-            var start = (new Date()).getTime();
-
-            // 実行
-            fn();
-
-            // 経過時間
-            var progress = (new Date()).getTime() - start;
-            // 次回までの待ち時間を計算
-            var newDelay = delay-progress;
-            newDelay = (newDelay > 0) ? newDelay : 0;
-
-            // 次回呼び出し登録
-            setTimeout(arguments.callee, newDelay);
-        };
-        setTimeout(temp, delay);
+        tm.updater.push({
+            delay: delay,
+            fn: fn,
+            t: delay || 1000 / 30
+        });
     };
 
     tm.inform = function(parent){
@@ -1973,13 +2002,15 @@ tm.util = tm.util || {};
         start: function() {
             this.isPlaying = true;
             this._startTime();
-            this._updateTime();
+            tm.setLoop(this._updateTime.bind(this), 1000 / this.fps);
+            this._updateTime();	//Note: 初回更新される模様
         },
         
         resume: function() {
             this.isPlaying = true;
             this._resumeTime();
-            this._updateTime();
+            tm.setLoop(this._updateTime.bind(this), 1000 / this.fps);
+            this._updateTime();	//Note: 初回更新される模様
         },
         
         stop: function() {
@@ -2013,10 +2044,10 @@ tm.util = tm.util || {};
         },
         
         _updateTime: function() {
-            if (this.isPlaying) {
+            if (this.isPlaying)
                 this._nextTime();
-                setTimeout(arguments.callee.bind(this), 1000/this.fps);
-            }
+
+            return !this.isPlaying;
         },
         
         _nextTime: function() {
@@ -9986,7 +10017,8 @@ tm.anim = tm.anim || {};
         resume: function() {
             this.isPlaying = true;
             this._resumeTime();
-            this._updateTime();
+            tm.setLoop(this._updateTime.bind(this), 1000 / this.fps);
+            this._updateTime();	//Note: 初回更新される模様
             this.dispatchEvent(tm.event.TweenEvent("resume", this.time, this.nowProps));
         },
         
@@ -9996,7 +10028,8 @@ tm.anim = tm.anim || {};
         start: function() {
             this.isPlaying = true;
             this._startTime();
-            this._updateTime();
+            tm.setLoop(this._updateTime.bind(this), 1000 / this.fps);
+            this._updateTime();	//Note: 初回更新される模様
             this.dispatchEvent(tm.event.TweenEvent("start", this.time, this.nowProps));
         },
         
@@ -10057,10 +10090,10 @@ tm.anim = tm.anim || {};
         },
         
         _updateTime: function() {
-            if (this.isPlaying) {
+            if (this.isPlaying)
                 this._setTime((new Date()).getTime() - this.startTime);
-                setTimeout(arguments.callee.bind(this), 1000/this.fps);
-            }
+
+            return !this.isPlaying;
         },
         
         _setTime: function(t) {
@@ -12822,28 +12855,9 @@ tm.app = tm.app || {};
         run: function()
         {
             var self = this;
-            
-            // // requestAnimationFrame version
-            // var fn = function() {
-                // self._loop();
-                // requestAnimationFrame(fn);
-            // }
-            // fn();
-            
             tm.setLoop(function(){ self._loop(); }, 1000/this.fps);
             
             return ;
-            
-            if (true) {
-                setTimeout(arguments.callee.bind(this), 1000/this.fps);
-                this._loop();
-            }
-            
-            return ;
-            
-            var self = this;
-            // setInterval(function(){ self._loop(); }, 1000/self.fps);
-            tm.setLoop(function(){ self._loop(); }, 1000/self.fps);
         },
         
         _loop: function()
