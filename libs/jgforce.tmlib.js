@@ -4,30 +4,97 @@ jgforce.tm = {};
 		superClass: tm.input.Mouse,
 		init: function(element, app) {
 			this.element = element || window.document;
+			this.app = app;
 
 			this.position       = tm.geom.Vector2(0, 0);
 			this.deltaPosition  = tm.geom.Vector2(0, 0);
 			this.prevPosition   = tm.geom.Vector2(0, 0);
 
-			/*
 			var self = this;
 			this.element.addEventListener("mousemove", function(e){
-				// 座標更新
-				self._mousemove(e);
+				if (self.app.mode == jgforce.GameState.Play && self.button) {
+					var rect = e.target.getBoundingClientRect();
+					this.x = e.clientX - rect.left;
+					this.y = e.clientY - rect.top;
+					self.app.events.push({
+						type: jg.InputEventType.Point,
+						action: jg.InputEventAction.Move,
+						x: e.clientX - rect.left,
+						y: e.clientY - rect.top,
+						point: {
+							x: e.clientX - rect.left,
+							y: e.clientY - rect.top
+						},
+						param: e
+					});
+				}
 			});
 			this.element.addEventListener("mousedown", function(e){
-				self.button |= 1<<e.button;
+				if (self.app.mode == jgforce.GameState.Play) {
+					var rect = e.target.getBoundingClientRect();
+					self.app.events.push({
+						type: jg.InputEventType.Point,
+						action: jg.InputEventAction.Down,
+						x: e.clientX - rect.left,
+						y: e.clientY - rect.top,
+						point: {
+							x: e.clientX - rect.left,
+							y: e.clientY - rect.top
+						},
+						param: e
+					});
+				}
 			});
 			this.element.addEventListener("mouseup", function(e){
-				self.button &= ~(1<<e.button);
+				if (self.app.mode == jgforce.GameState.Play) {
+					var rect = e.target.getBoundingClientRect();
+					self.app.events.push({
+						type: jg.InputEventType.Point,
+						action: jg.InputEventAction.Up,
+						x: e.clientX - rect.left,
+						y: e.clientY - rect.top,
+						point: {
+							x: e.clientX - rect.left,
+							y: e.clientY - rect.top
+						},
+						param: e
+					});
+				}
 			});
+			//unsupported
+			/*
 			this.element.addEventListener("mouseover", function(e){
 				// 座標更新
 				self._mousemove(e);
 				self.prevPosition.setObject(self.position);
 			});
 			*/
-		}
+		},
+		clear: function() {
+			//TODO
+		},
+		fire: function(e) {
+			if (e.type != jg.InputEventType.Point)
+				return;
+			if (e.action == jg.InputEventAction.Down) {
+				//左クリックだけ
+				this.button |= 1;
+			} else if (e.action == jg.InputEventAction.Up) {
+				//左クリックだけ
+				this.button &= ~(1);
+			//} else if (e.action == jg.InputEventAction.Move) {
+			}
+
+			this.x = e.point.x;
+			this.y = e.point.y;
+			var target = this.app.element;
+			if (target.style.width) {
+				this.x *= target.width / parseInt(target.style.width);
+			}
+			if (target.style.height) {
+				this.y *= target.height / parseInt(target.style.height);
+			}
+		},
 	}),
 	jgforce.tm.Touches = tm.createClass({
 		superClass: tm.input.Touches,
@@ -77,6 +144,9 @@ jgforce.tm = {};
 				e.stop();
 			});
 			*/
+		},
+		clear: function() {
+			//TODO
 		}
 	}),
 	jgforce.tm.Keyboard = tm.createClass({
@@ -119,12 +189,6 @@ jgforce.tm = {};
 				e.stopPropagation();
 				e.preventDefault();
 			});
-			/*
-			//なんもしてないっぽい
-			this.element.addEventListener("keypress", function(e){
-			// self.button &= ~(1<<e.button);
-			});
-			*/
 		},
 		fire: function(e) {
 			if (e.type != jg.InputEventType.Keyboard)
@@ -134,7 +198,19 @@ jgforce.tm = {};
 			} else if (e.action == jg.InputEventAction.Up) {
 				this.key[e.param.keyCode] = false;
 			}
-			this._update();
+		},
+		clear: function() {
+			for (var k in this.key) {
+				if (this.key[k]) {
+					this.app.events.push({
+						type: jg.InputEventType.Keyboard,
+						action: jg.InputEventAction.Up,
+						param: {
+							keyCode: k
+						}
+					});
+				}
+			}
 		}
 	});
 
@@ -169,6 +245,16 @@ jgforce.tm = {};
 		},
 		setSeed: function(seed) {
 			this.seed = seed;
+			this.random = new jgforce.Random(this.seed);
+		},
+		randint: function(min, max) {
+			return this.random.random(min, max);
+		},
+		randfloat: function(min, max) {
+			return this.random.randomDouble(min, max);
+		},
+		randbool: function(min, max) {
+			return this.random.random(0, 1) == 0;
 		},
 		jgstart: function() {
 			if (! this.isStarted) {
@@ -241,10 +327,9 @@ jgforce.tm = {};
 				self._play();
 			}, function() {
 				alert("シードの取得に失敗しました。");
-			});	
+			});
 		},
 		startPlay: function() {
-			//状況見てモードチェンジとstartかな
 			this._start = true;
 			this._play();
 		},
@@ -299,7 +384,6 @@ jgforce.tm = {};
 					console.log("clear input state");
 					this.current_frame++;
 					this.clearInputEvent();
-					this.raiseInputEvent();
 				} else { //scene change
 					this.logScene = e.t;
 					if (this.sceneIndex < this.logScene) {
@@ -322,12 +406,40 @@ jgforce.tm = {};
 					this.keyboard.fire(e);
 				} else {
 					//this.getTouchDispatcher().fire(e);
-					//this.getMouseDispatcher().fire(e);
+					this.mouse.fire(e);
 				}
 			}
 		},
-		//jgofrce専用 ----
+		isEnded: function() {
+			return this.current_frame >= this.total_frame;
+		},
+		clearInputEvent: function() {
+			this.keyboard.clear();
+			this.mouse.clear();
+			this.touches.clear();
+		},
+		seekToFrame: function(frame) {
+			if (! this.isStarted)
+				return false;
 
+			if (this.mode != jgforce.GameState.View && this.mode != jgforce.GameState.PauseView)
+				return false;
+
+			if (frame < this.current_frame || frame > this.total_frame)
+				return false;
+
+			this.old_mode = this.mode;
+			this.mode = jgforce.GameState.Skip;
+			this.skip_frame = frame;
+			this.invisible = true;
+			this.render_rate = this.fps;
+			this.render_count = 0;
+			return true;
+		},
+		seekToEnd: function() {
+			return this.seekToFrame(this.total_frame);
+		},
+		//jgofrce専用 ----
 		init: function(canvas, width, height) {
 			//Note:
 			//superInit、は使えない。使った時点でKeyboardなどが登録され、解除する方法がないため
@@ -347,7 +459,6 @@ jgforce.tm = {};
 			//---- BaseApp部分のInit処理
 			//this.element = elm;
 
-			//glshooter2がマウスサポートしてからね
 			// マウスを生成
 			this.mouse = jgforce.tm.Mouse(this.element, this);
 			// タッチを生成
@@ -407,6 +518,7 @@ jgforce.tm = {};
 			//---- jgforce init
 			this.resize(width, height).fitWindow();
 			this.started = new jg.Trigger();
+			this.seeked = new jg.Trigger();
 			this.element.setAttribute('tabindex', 1);
 			this.element.style.outline = 'none';
 			this.element.style.cursor = 'default';
@@ -458,17 +570,39 @@ jgforce.tm = {};
 			var start = (new Date()).getTime();
 			if (this.mode == jgforce.GameState.Play) {
 				if (this.playHelper) {
+					this.total_time += tm.loopTime;
+					this.current_time += tm.loopTime;
+					this.total_frame++;
+					this.current_frame++;
 					this.playHelper.logging({
 						type: 0,
 						t: tm.loopTime,
 						events: this.events
 					});
 				}
-				this.manualUpdate();
+				this.manualUpdate(tm.loopTime);
 			} else if (this.mode == jgforce.GameState.View) {
 				this.viewUpdate();
+			} else if (this.mode == jgforce.GameState.Skip) {
+				for (var i=0; i<5; i++) {
+					this.viewUpdate();
+					if (this.current_frame >= this.skip_frame) {
+						this._draw();
+						delete this.invisible;
+						delete this.skip_frame;
+						delete this.render_count;
+						delete this.render_rate;
+						this.mode = this.old_mode;
+						this.seeked.fire();
+						break;
+					} else {
+						if (++this.render_count >= this.render_rate) {
+							this.render_count = 0;
+							this._draw();
+						}
+					}
+				}
 			}
-
 			var progress = (new Date()).getTime() - start;
 			var newDelay = tm.loopTime-progress;
 			newDelay = (newDelay > 0) ? newDelay : 0;

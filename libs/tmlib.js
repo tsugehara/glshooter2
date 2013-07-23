@@ -12868,7 +12868,7 @@ tm.app = tm.app || {};
             
             // draw
             if (this.draw) this.draw();
-            this._draw();
+            if (!this.invisible) this._draw();
             
             // stats update
             if (this.stats) this.stats.update();
